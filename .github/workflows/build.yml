@@ -22,7 +22,7 @@ jobs:
         run: |
           git clone https://github.com/ClangBuiltLinux/tc-build.git --depth=1
           cd tc-build
-          ./build-llvm.py --targets "AArch64 ARM" --install-folder $GITHUB_WORKSPACE/clang
+          ./build-llvm.py --targets "AArch64" "ARM" --install-folder $GITHUB_WORKSPACE/clang
 
       - name: Setup KernelSU
         run: |
