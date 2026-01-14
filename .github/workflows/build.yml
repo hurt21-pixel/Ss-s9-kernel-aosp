@@ -37,18 +37,17 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # === OPERASI TOTAL MAKEFILE ===
-          # 1. Hapus semua -Werror (Warning jadi error)
+          # === MEMBERSIHKAN MAKEFILE DARI FLAG ERROR ===
+          # Hapus -Werror agar tidak manja kalau ada warning
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
           find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
-          # 2. Fix error '-implicit-function-declaration' yang kurang huruf 'W'
+          # Fix flag yang salah tulis di source kernelnya
           find . -name Makefile -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
-          # 3. Hapus flag unknown-warning-option yang bikin mogok
           find . -name Makefile -exec sed -i 's/-Wunknown-warning-option//g' {} +
           
           CONF=exynos9810_lineageos_defconfig
           
-          # Inject Config KSU
+          # Tambah Config KSU
           echo "CONFIG_KPROBES=y" >> arch/arm64/configs/$CONF
           echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/$CONF
           echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$CONF
@@ -58,8 +57,7 @@ jobs:
           sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' arch/arm64/configs/$CONF
           sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' arch/arm64/configs/$CONF
           
-          # MULAI MASAK
-          # Kita pakai LLVM_IAS=0 jika Clang masih rewel soal Assembler
+          # MULAI MASAK (Pakai LLVM=1 agar tidak kena error -EL)
           make O=out $CONF
           make -j$(nproc --all) O=out \
             CC=clang \
@@ -79,11 +77,11 @@ jobs:
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
             zip -r9 ../Kernel-S9-Universal-KSU.zip *
           else
-            echo "Aduh Boss, Image.gz gagal mateng lagi!" && exit 1
+            echo "Image.gz gagal mateng Boss!" && exit 1
           fi
 
       - name: Upload Result
-        uses: uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: Kernel-S9-KSU-Final
           path: Kernel-S9-Universal-KSU.zip
