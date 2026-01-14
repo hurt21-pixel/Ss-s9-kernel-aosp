@@ -1,4 +1,4 @@
-name: Build Kernel S9 Universal KSU - Final Fix
+name: Build Kernel S9 Universal KSU
 
 on:
   workflow_dispatch:
@@ -22,10 +22,12 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
           cd $GITHUB_WORKSPACE/clang
+          # Pakai Neutron Clang terbaru
           bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
 
       - name: Setup KernelSU
         run: |
+          # Langsung pasang KSU di root kernel
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
       - name: Configure and Build
@@ -37,10 +39,11 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # HACK: Buang semua aturan -Werror (biar warning gak jadi error)
+          # JURUS SAKTI 1: Hapus aturan -Werror agar warning tidak jadi error fatal
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
           find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
           
+          # Setting Config
           CONF=exynos9810_lineageos_defconfig
           
           # Inject Config KSU
@@ -49,25 +52,17 @@ jobs:
           echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$CONF
           echo "CONFIG_KSU=y" >> arch/arm64/configs/$CONF
           
-          # Matikan RKP/Knox
+          # Matikan RKP/Knox agar tidak bootloop
           sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' arch/arm64/configs/$CONF
           sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' arch/arm64/configs/$CONF
           
-          # MASAK: Kita sebutkan satu-satu foldernya biar gak salah ambil alat
+          # JURUS SAKTI 2: Masak dengan LLVM=1 dan KCFLAGS="-w"
+          # -w (huruf kecil) artinya: "Matikan semua peringatan, jangan bawel!"
           make O=out $CONF
           make -j$(nproc --all) O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
             CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            OBJSIZE=llvm-size \
-            READELF=llvm-readelf \
-            HOSTCC=clang \
-            HOSTCXX=clang++ \
-            HOSTAR=llvm-ar \
             CLANG_TRIPLE=$CLANG_TRIPLE \
             CROSS_COMPILE=$CROSS_COMPILE \
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
@@ -79,10 +74,11 @@ jobs:
           if [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
             cd AnyKernel3
+            # Matikan cek device agar bisa di-flash ke S9/Note9 mana saja
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
             zip -r9 ../Kernel-S9-Universal-KSU.zip *
           else
-            echo "Gagal mateng Boss, cek log di atas!" && exit 1
+            echo "Waduh Boss, Image.gz tidak ditemukan. Cek log compile di atas!" && exit 1
           fi
 
       - name: Upload Result
