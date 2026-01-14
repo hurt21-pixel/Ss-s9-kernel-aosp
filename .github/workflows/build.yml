@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: hurt21-pixel/Android_kernel_samsung_exynos9810
+          repository: hurt21-pixel/android_kernel_samsung_universal9810
           fetch-depth: 1
 
       - name: Setup Build Environment
