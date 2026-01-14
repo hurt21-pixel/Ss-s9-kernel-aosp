@@ -1,4 +1,4 @@
-name: Build Kernel S9 KSU - Final Final Fix
+name: Build Kernel S9 Universal KSU
 
 on:
   workflow_dispatch:
@@ -10,6 +10,7 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
+          # Menggunakan repo baru pilihanmu
           repository: hurt21-pixel/android_kernel_samsung_universal9810
           fetch-depth: 1
 
@@ -37,11 +38,12 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           export CLANG_TRIPLE=aarch64-linux-gnu-
           
-          # HAPUS SEMUA ATURAN KERAS (Werror) LANGSUNG DARI SUMBERNYA
-          # Ini biar warning apapun tidak jadi error
+          # BERSIHKAN Makefile dari aturan -Werror yang bikin macet
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
           find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
           
+          # Gunakan config yang ada di repo universal9810
+          # Jika error "not found", coba ganti ke: exynos9810_defconfig
           CONF=exynos9810_lineageos_defconfig
           
           # Inject Config KSU
@@ -50,12 +52,13 @@ jobs:
           echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$CONF
           echo "CONFIG_KSU=y" >> arch/arm64/configs/$CONF
           
-          # Matikan RKP/Knox biar gak bootloop
+          # Matikan fitur keamanan Samsung
           sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' arch/arm64/configs/$CONF
           sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' arch/arm64/configs/$CONF
           
-          # PROSES MASAK (Full LLVM)
-          # LLVM=1 dan LLVM_IAS=1 adalah kunci fix error '-EL'
+          # MULAI MASAK
+          # LLVM=1 & LLVM_IAS=1 untuk fix error '-EL' (memaksa pakai Clang Assembler)
+          # KCFLAGS="-w" untuk mematikan semua warning/error kecil
           make O=out $CONF
           make -j$(nproc --all) O=out \
             CC=clang \
@@ -72,15 +75,16 @@ jobs:
           if [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
             cd AnyKernel3
+            # Matikan cek device agar bisa di-flash ke semua S9/Note9 Exynos
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-            zip -r9 ../Kernel-S9-KSU-Final.zip *
+            zip -r9 ../Kernel-Universal9810-KSU.zip *
           else
-            echo "Aduh Boss, Image.gz gagal tercipta!" && exit 1
+            echo "Aduh Boss, Image.gz gagal mateng!" && exit 1
           fi
 
       - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-S9-KSU-Final
-          path: Kernel-S9-KSU-Final.zip
+          path: Kernel-Universal9810-KSU.zip
           
