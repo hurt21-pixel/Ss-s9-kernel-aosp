@@ -1,4 +1,4 @@
-name: Build Kernel S9 Universal KSU (Prebuilt Clang Fixed)
+name: Build Kernel S9 Universal KSU (Prebuilt Clang Final)
 
 on:
   workflow_dispatch:
@@ -18,10 +18,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libncurses-dev x11proto-core-dev libx11-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig bc python3
 
-      - name: Download Prebuilt Clang AOSP r498928 (Fixed)
+      - name: Download Prebuilt Clang AOSP r498928 (Final Fix)
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
-          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/master/clang-r498928.tar.gz?format=TEXT" | base64 -d > clang.tar.gz
+          curl -L "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/master/clang-r498928.tar.gz?format=TEXT" \
+            | tail -n +2 | base64 -d > clang.tar.gz
           tar -xf clang.tar.gz -C $GITHUB_WORKSPACE/clang
 
       - name: Setup KernelSU
