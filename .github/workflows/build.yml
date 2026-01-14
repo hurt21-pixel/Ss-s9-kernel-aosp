@@ -26,7 +26,7 @@ jobs:
 
       - name: Clone Source
         run: |
-          git clone --depth=1 https://github.com/eureka-development/Android_kernel_samsung_exynos9810.git source
+          git clone --depth=1 https://github.com/hurt21-pixel/android_kernel_samsung_universal9810.git
 
       - name: Setup KernelSU
         run: |
