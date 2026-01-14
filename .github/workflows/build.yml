@@ -1,4 +1,4 @@
-name: Build Kernel S9 Universal KSU - Final Fix
+name: Build Kernel S9 Universal KSU
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libncurses-dev x11proto-core-dev libx11-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig bc python3
 
-      - name: Download Clang
+      - name: Download Toolchain
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
           cd $GITHUB_WORKSPACE/clang
@@ -30,6 +30,7 @@ jobs:
 
       - name: Configure and Build
         run: |
+          # Atur Path Toolchain
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
@@ -37,28 +38,24 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # === MEMBERSIHKAN MAKEFILE DARI FLAG ERROR ===
-          # Hapus -Werror agar tidak manja kalau ada warning
+          # Bersihkan Makefile dari flag yang bikin mogok (Berdasarkan log error kamu sebelumnya)
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
           find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
-          # Fix flag yang salah tulis di source kernelnya
+          # Memperbaiki flag yang kurang huruf 'W'
           find . -name Makefile -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
-          find . -name Makefile -exec sed -i 's/-Wunknown-warning-option//g' {} +
           
           CONF=exynos9810_lineageos_defconfig
           
-          # Tambah Config KSU
-          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/$CONF
-          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/$CONF
-          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$CONF
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/$CONF
-          
-          # Matikan RKP/Knox
-          sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' arch/arm64/configs/$CONF
-          sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' arch/arm64/configs/$CONF
-          
-          # MULAI MASAK (Pakai LLVM=1 agar tidak kena error -EL)
+          # Masukkan Config KSU & Matikan Security Samsung
           make O=out $CONF
+          echo "CONFIG_KPROBES=y" >> out/.config
+          echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+          echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
+          echo "CONFIG_KSU=y" >> out/.config
+          sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' out/.config
+          sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' out/.config
+          
+          # PROSES COMPILE (Mirip pola Snapdragon yang kamu kasih)
           make -j$(nproc --all) O=out \
             CC=clang \
             LLVM=1 \
@@ -66,7 +63,7 @@ jobs:
             CLANG_TRIPLE=$CLANG_TRIPLE \
             CROSS_COMPILE=$CROSS_COMPILE \
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            KCFLAGS="-w"
+            KCFLAGS="-w -Wno-error=implicit-function-declaration"
 
       - name: Pack Kernel
         run: |
@@ -75,14 +72,14 @@ jobs:
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
             cd AnyKernel3
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-            zip -r9 ../Kernel-S9-Universal-KSU.zip *
+            zip -r9 ../Kernel-S9-KSU-Mateng.zip *
           else
-            echo "Image.gz gagal mateng Boss!" && exit 1
+            echo "Gagal, Image.gz tidak ada!" && exit 1
           fi
 
-      - name: Upload Result
+      - name: Upload Kernel
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-S9-KSU-Final
-          path: Kernel-S9-Universal-KSU.zip
+          path: Kernel-S9-KSU-Mateng.zip
           
