@@ -30,7 +30,6 @@ jobs:
 
       - name: Configure and Build
         run: |
-          # Atur Path Toolchain
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export ARCH=arm64
           export SUBARCH=arm64
@@ -38,16 +37,24 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # Bersihkan Makefile dari flag yang bikin mogok (Berdasarkan log error kamu sebelumnya)
+          # Bersihkan Makefile dari flag yang bikin mogok
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
           find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
-          # Memperbaiki flag yang kurang huruf 'W'
           find . -name Makefile -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           
-          CONF=exynos9810_lineageos_defconfig
+          # LOGIKA AUTO-DETECT CONFIG
+          # Kita coba LineageOS dulu, kalau gagal pakai standar Exynos 9810
+          if [ -f arch/arm64/configs/exynos9810_lineageos_defconfig ]; then
+            CONF=exynos9810_lineageos_defconfig
+          else
+            CONF=exynos9810_defconfig
+          fi
+          echo "Menggunakan Config: $CONF"
           
-          # Masukkan Config KSU & Matikan Security Samsung
+          # Buat folder output dan buat config
           make O=out $CONF
+          
+          # Inject Config KSU langsung ke .config yang sudah jadi
           echo "CONFIG_KPROBES=y" >> out/.config
           echo "CONFIG_HAVE_KPROBES=y" >> out/.config
           echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
@@ -55,7 +62,7 @@ jobs:
           sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' out/.config
           sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' out/.config
           
-          # PROSES COMPILE (Mirip pola Snapdragon yang kamu kasih)
+          # MULAI COMPILE
           make -j$(nproc --all) O=out \
             CC=clang \
             LLVM=1 \
@@ -63,7 +70,7 @@ jobs:
             CLANG_TRIPLE=$CLANG_TRIPLE \
             CROSS_COMPILE=$CROSS_COMPILE \
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
-            KCFLAGS="-w -Wno-error=implicit-function-declaration"
+            KCFLAGS="-w"
 
       - name: Pack Kernel
         run: |
@@ -72,14 +79,14 @@ jobs:
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
             cd AnyKernel3
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-            zip -r9 ../Kernel-S9-KSU-Mateng.zip *
+            zip -r9 ../Kernel-S9-KSU-Final.zip *
           else
-            echo "Gagal, Image.gz tidak ada!" && exit 1
+            echo "Gagal mateng Boss!" && exit 1
           fi
 
-      - name: Upload Kernel
+      - name: Upload Result
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-S9-KSU-Final
-          path: Kernel-S9-KSU-Mateng.zip
+          path: Kernel-S9-KSU-Final.zip
           
