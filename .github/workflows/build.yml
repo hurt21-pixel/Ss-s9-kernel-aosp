@@ -31,7 +31,7 @@ jobs:
       - name: Setup KernelSU
         run: |
           cd source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+          curl -LSs "https://github.com/hurt21-pixel/KernelSU-Next.git | setup.sh" | bash -
 
       - name: Configure and Build
         run: |
