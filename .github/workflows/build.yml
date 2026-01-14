@@ -10,7 +10,8 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: hurt21-pixel/android_kernel_samsung_universal9810
+          # Kita pakai repo EurekA yang lebih standar buat AOSP S9
+          repository: EurekA-Kernel/EuK-9810-Kernel
           fetch-depth: 1
 
       - name: Setup Build Environment
@@ -18,17 +19,32 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libncurses-dev x11proto-core-dev libx11-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig bc python3
 
-      - name: Download Toolchain
+      - name: Download Toolchain (Neutron Clang)
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
           cd $GITHUB_WORKSPACE/clang
           bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
 
-      - name: Setup KernelSU
+      - name: Install KernelSU
         run: |
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
-      - name: Configure and Build
+      - name: Auto-Edit Config (KSU ON & Samsung Security OFF)
+        run: |
+          # Cari file defconfig yang benar secara otomatis
+          CONF=$(ls arch/arm64/configs/ | grep -E "starlte|universal9810" | head -n 1)
+          if [ -z "$CONF" ]; then CONF="eureka_starlte_defconfig"; fi
+          echo "CONF_FILE=$CONF" >> $GITHUB_ENV
+          
+          # Inject KSU dan matikan Knox/RKP sebelum compile
+          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/$CONF
+          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/$CONF
+          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$CONF
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/$CONF
+          sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' arch/arm64/configs/$CONF
+          sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' arch/arm64/configs/$CONF
+
+      - name: Compile Kernel
         run: |
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export ARCH=arm64
@@ -37,32 +53,10 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           
-          # Bersihkan Makefile dari flag yang bikin mogok
+          # Hilangkan -Werror agar tidak mogok karena warning
           find . -name Makefile -exec sed -i 's/-Werror//g' {} +
-          find . -name Kbuild -exec sed -i 's/-Werror//g' {} +
-          find . -name Makefile -exec sed -i 's/-implicit-function-declaration/-Wimplicit-function-declaration/g' {} +
           
-          # LOGIKA AUTO-DETECT CONFIG
-          # Kita coba LineageOS dulu, kalau gagal pakai standar Exynos 9810
-          if [ -f arch/arm64/configs/exynos9810_lineageos_defconfig ]; then
-            CONF=exynos9810_lineageos_defconfig
-          else
-            CONF=exynos9810_defconfig
-          fi
-          echo "Menggunakan Config: $CONF"
-          
-          # Buat folder output dan buat config
-          make O=out $CONF
-          
-          # Inject Config KSU langsung ke .config yang sudah jadi
-          echo "CONFIG_KPROBES=y" >> out/.config
-          echo "CONFIG_HAVE_KPROBES=y" >> out/.config
-          echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
-          echo "CONFIG_KSU=y" >> out/.config
-          sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' out/.config
-          sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' out/.config
-          
-          # MULAI COMPILE
+          make O=out ${{ env.CONF_FILE }}
           make -j$(nproc --all) O=out \
             CC=clang \
             LLVM=1 \
@@ -72,21 +66,21 @@ jobs:
             CROSS_COMPILE_ARM32=$CROSS_COMPILE_ARM32 \
             KCFLAGS="-w"
 
-      - name: Pack Kernel
+      - name: Repack AnyKernel3
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           if [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
             cd AnyKernel3
             sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-            zip -r9 ../Kernel-S9-KSU-Final.zip *
+            zip -r9 ../Kernel-S9-KSU-Mateng.zip *
           else
-            echo "Gagal mateng Boss!" && exit 1
+            echo "Gagal, file Image.gz tidak ditemukan!" && exit 1
           fi
 
-      - name: Upload Result
+      - name: Upload Kernel Zip
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-S9-KSU-Final
-          path: Kernel-S9-KSU-Final.zip
+          name: Kernel-S9-EurekA-KSU
+          path: Kernel-S9-KSU-Mateng.zip
           
