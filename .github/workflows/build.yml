@@ -1,4 +1,4 @@
-name: Build Kernel S9 Universal KSU (Clang Mirror)
+name: Build Kernel S9 Universal KSU (Clang PE Mirror)
 
 on:
   workflow_dispatch:
@@ -18,10 +18,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libncurses-dev x11proto-core-dev libx11-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig bc python3
 
-      - name: Download Prebuilt Clang AOSP r498928 (Mirror GitHub)
+      - name: Download Prebuilt Clang AOSP r498928 (PixelExperience Mirror)
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
-          curl -L "https://github.com/VR-Builder/prebuilt-clang-aosp/releases/download/r498928/clang-r498928.tar.gz" -o clang.tar.gz
+          curl -L "https://github.com/PixelExperience/prebuilts_clang_host_linux-x86/releases/download/clang-r498928/clang-r498928.tar.gz" -o clang.tar.gz
           tar -xf clang.tar.gz -C $GITHUB_WORKSPACE/clang
 
       - name: Setup KernelSU
