@@ -1,0 +1,74 @@
+name: Build Kernel S9 KSU
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig bc
+
+      - name: Download Clang
+        run: |
+          mkdir clang
+          cd clang
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
+          cd ..
+
+      - name: Clone Source
+        run: |
+          git clone --depth=1 https://github.com/synt4x93/android_kernel_samsung_universal9810.git
+
+      - name: Setup KernelSU
+        run: |
+          cd source
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
+      - name: Configure and Build
+        run: |
+          cd source
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          export CC=clang
+          
+          # Edit defconfig untuk KSU dan Matikan Security Samsung
+          CONF=arch/arm64/configs/exynos9810_lineageos_defconfig
+          echo "CONFIG_KPROBES=y" >> $CONF
+          echo "CONFIG_HAVE_KPROBES=y" >> $CONF
+          echo "CONFIG_KPROBE_EVENTS=y" >> $CONF
+          echo "CONFIG_KSU=y" >> $CONF
+          sed -i 's/CONFIG_RKP_CFP=y/CONFIG_RKP_CFP=n/g' $CONF
+          sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' $CONF
+          
+          make O=out $CONF
+          make -j$(nproc --all) O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+
+      - name: Pack Kernel
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cp source/out/arch/arm64/boot/Image.gz AnyKernel3/
+          cd AnyKernel3
+          zip -r9 ../Kernel-S9-KSU.zip *
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-S9-KSU-Final
+          path: Kernel-S9-KSU.zip
+          
