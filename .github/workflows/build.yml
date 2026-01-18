@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build (LTO + KernelSU + Clang 14)
+name: LineageOS Kernel Build (Stable - No LTO)
 
 on:
   workflow_dispatch:
@@ -33,7 +33,8 @@ jobs:
         cd kernel_source
         mkdir -p out
 
-        # 1. Setup Argumen (Fix Error gettimeofday.S dengan LLVM_IAS=0)
+        # 1. Setup Argumen (Aman & Stabil)
+        # Kita hapus LTO, dan tetap pakai LLVM_IAS=0 buat fix error gettimeofday
         args="O=out \
               ARCH=arm64 \
               CC=clang-14 \
@@ -48,24 +49,26 @@ jobs:
               LLVM=1 \
               LLVM_IAS=0"
 
-        # 2. Cari dan Load Defconfig
+        # 2. Cari Config
         CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
         echo "Menggunakan Config: $CONFIG_FILE"
         make $args $CONFIG_FILE
 
-        # 3. Injeksi Fitur (KernelSU & LTO)
-        echo "Mengaktifkan Fitur Modern..."
-        # KernelSU
+        # 3. Injeksi KernelSU (HANYA KSU, Jangan LTO)
+        echo "Mengaktifkan KernelSU..."
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
-        # LTO (Agar mirip kernel +lto aslimu)
-        echo "CONFIG_LTO_CLANG=y" >> out/.config
-        echo "CONFIG_LTO_CLANG_THIN=y" >> out/.config
+        echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+        echo "CONFIG_KPROBES_ON_FTRACE=y" >> out/.config
         
-        # 4. Tambal otomatis opsi CPU MASK yang bikin 'Aborted'
+        # Pastikan LTO MATI (Biar gak error GNU Gold lagi)
+        echo "CONFIG_LTO_CLANG=n" >> out/.config
+        echo "CONFIG_LTO=n" >> out/.config
+
+        # 4. Olddefconfig (Penting!)
         make $args olddefconfig
 
-        # 5. Mulai Compile
+        # 5. Compile
         make -j$(nproc) $args
 
     - name: Pack Result
@@ -76,15 +79,15 @@ jobs:
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Sukses dengan LTO!"
+          echo "Build Sukses Bosku!"
         else
-          echo "Build gagal, periksa log di atas!"
+          echo "Masih gagal? Cek log lagi ya."
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Lineage-Kernel-LTO-KSU-starlte
+        name: Lineage-Kernel-Stable-KSU
         path: final_out/Image.gz-dtb
         
