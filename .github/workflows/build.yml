@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build (Stable - No LTO)
+name: LineageOS Kernel Build (Hybrid Clang + GNU)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
         sudo apt update
         sudo apt install -y \
           bc bison flex libssl-dev make gcc python3 git zip lz4 cpio \
-          clang-14 llvm-14 lld-14 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          clang-14 lld-14 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
     - name: Setup KernelSU
       run: |
@@ -33,39 +33,34 @@ jobs:
         cd kernel_source
         mkdir -p out
 
-        # 1. Setup Argumen (Aman & Stabil)
-        # Kita hapus LTO, dan tetap pakai LLVM_IAS=0 buat fix error gettimeofday
+        # 1. SETUP HYBRID (RAHASIA SUKSES)
+        # Kita HAPUS 'LLVM=1' dan 'LLVM_IAS=0'.
+        # Kita pakai Clang cuma buat CC (Compiler C).
+        # Sisanya (LD, AR, AS) otomatis pakai GNU (aarch64-linux-gnu-...)
+        # Ini 100% ampuh buat kernel 4.9.
+        
         args="O=out \
               ARCH=arm64 \
               CC=clang-14 \
-              LD=ld.lld-14 \
-              AR=llvm-ar-14 \
-              NM=llvm-nm-14 \
-              OBJCOPY=llvm-objcopy-14 \
-              OBJDUMP=llvm-objdump-14 \
-              STRIP=llvm-strip-14 \
               CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              LLVM=1 \
-              LLVM_IAS=0"
+              CROSS_COMPILE=aarch64-linux-gnu-"
 
         # 2. Cari Config
         CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
         echo "Menggunakan Config: $CONFIG_FILE"
         make $args $CONFIG_FILE
 
-        # 3. Injeksi KernelSU (HANYA KSU, Jangan LTO)
-        echo "Mengaktifkan KernelSU..."
+        # 3. Injeksi KernelSU (Tanpa LTO biar aman)
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KPROBES_ON_FTRACE=y" >> out/.config
         
-        # Pastikan LTO MATI (Biar gak error GNU Gold lagi)
+        # Matikan LTO (Penyebab error GNU Gold)
         echo "CONFIG_LTO_CLANG=n" >> out/.config
         echo "CONFIG_LTO=n" >> out/.config
 
-        # 4. Olddefconfig (Penting!)
+        # 4. Olddefconfig (Biar gak Aborted)
         make $args olddefconfig
 
         # 5. Compile
@@ -79,15 +74,15 @@ jobs:
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Sukses Bosku!"
+          echo "BUILD SUKSES AKHIRNYA!"
         else
-          echo "Masih gagal? Cek log lagi ya."
+          echo "Masih gagal? Cek log di atas."
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Lineage-Kernel-Stable-KSU
+        name: Lineage-Kernel-Hybrid-KSU
         path: final_out/Image.gz-dtb
         
