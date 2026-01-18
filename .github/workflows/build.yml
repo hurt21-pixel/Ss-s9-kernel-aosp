@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build + KernelSU (Fixed Config)
+name: LineageOS Kernel Build (LTO + KernelSU + Clang 14)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
         sudo apt update
         sudo apt install -y \
           bc bison flex libssl-dev make gcc python3 git zip lz4 cpio \
-          lld clang llvm binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
+          clang-14 llvm-14 lld-14 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
     - name: Setup KernelSU
       run: |
@@ -33,43 +33,39 @@ jobs:
         cd kernel_source
         mkdir -p out
 
-        # 1. Setup Toolchain & Assembler Fix
-        # LLVM_IAS=0 wajib untuk fix error positional arguments di gettimeofday.S
+        # 1. Setup Argumen (Fix Error gettimeofday.S dengan LLVM_IAS=0)
         args="O=out \
               ARCH=arm64 \
-              CC=clang \
-              LD=ld.lld \
-              AR=llvm-ar \
-              NM=llvm-nm \
-              OBJCOPY=llvm-objcopy \
-              OBJDUMP=llvm-objdump \
-              STRIP=llvm-strip \
+              CC=clang-14 \
+              LD=ld.lld-14 \
+              AR=llvm-ar-14 \
+              NM=llvm-nm-14 \
+              OBJCOPY=llvm-objcopy-14 \
+              OBJDUMP=llvm-objdump-14 \
+              STRIP=llvm-strip-14 \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-gnu- \
               LLVM=1 \
               LLVM_IAS=0"
 
-        # 2. Cari Nama Defconfig yang Benar Secara Otomatis
-        # LineageOS biasanya pakai: exynos9810-starlte_defconfig
+        # 2. Cari dan Load Defconfig
         CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
-        
-        if [ -z "$CONFIG_FILE" ]; then
-          echo "ERROR: Config starlte tidak ditemukan di folder arch/arm64/configs/"
-          ls arch/arm64/configs/
-          exit 1
-        fi
-        
         echo "Menggunakan Config: $CONFIG_FILE"
         make $args $CONFIG_FILE
 
-        # 3. Injeksi Config KernelSU
+        # 3. Injeksi Fitur (KernelSU & LTO)
+        echo "Mengaktifkan Fitur Modern..."
+        # KernelSU
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
+        # LTO (Agar mirip kernel +lto aslimu)
+        echo "CONFIG_LTO_CLANG=y" >> out/.config
+        echo "CONFIG_LTO_CLANG_THIN=y" >> out/.config
         
-        # Jawab otomatis opsi baru (CPU MASK dll)
+        # 4. Tambal otomatis opsi CPU MASK yang bikin 'Aborted'
         make $args olddefconfig
 
-        # 4. Mulai Build
+        # 5. Mulai Compile
         make -j$(nproc) $args
 
     - name: Pack Result
@@ -80,15 +76,15 @@ jobs:
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Sukses!"
+          echo "Build Sukses dengan LTO!"
         else
-          echo "Kernel Image tidak ditemukan!"
+          echo "Build gagal, periksa log di atas!"
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Lineage-Kernel-KSU-starlte
+        name: Lineage-Kernel-LTO-KSU-starlte
         path: final_out/Image.gz-dtb
         
