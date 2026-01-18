@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build + KernelSU
+name: LineageOS Kernel Build + KernelSU (Fixed Config)
 
 on:
   workflow_dispatch:
@@ -21,22 +21,20 @@ jobs:
         sudo apt update
         sudo apt install -y \
           bc bison flex libssl-dev make gcc python3 git zip lz4 cpio \
-          lld clang llvm binutils-aarch64-linux-gnu
+          lld clang llvm binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu
 
-    - name: Setup KernelSU (Official Method)
+    - name: Setup KernelSU
       run: |
         cd kernel_source
-        # Menjalankan script installer resmi KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-        echo "KernelSU integrated successfully."
 
     - name: Build Kernel
       run: |
         cd kernel_source
         mkdir -p out
 
-        # 1. Tentukan Toolchain & Matikan Integrated Assembler (Fix Error gettimeofday.S)
-        # Kita pakai LLVM_IAS=0 agar file .S diproses oleh GNU Assembler (binutils)
+        # 1. Setup Toolchain & Assembler Fix
+        # LLVM_IAS=0 wajib untuk fix error positional arguments di gettimeofday.S
         args="O=out \
               ARCH=arm64 \
               CC=clang \
@@ -51,41 +49,46 @@ jobs:
               LLVM=1 \
               LLVM_IAS=0"
 
-        # 2. Ambil Config (Gunakan starlte_defconfig)
-        make $args starlte_defconfig
+        # 2. Cari Nama Defconfig yang Benar Secara Otomatis
+        # LineageOS biasanya pakai: exynos9810-starlte_defconfig
+        CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
+        
+        if [ -z "$CONFIG_FILE" ]; then
+          echo "ERROR: Config starlte tidak ditemukan di folder arch/arm64/configs/"
+          ls arch/arm64/configs/
+          exit 1
+        fi
+        
+        echo "Menggunakan Config: $CONFIG_FILE"
+        make $args $CONFIG_FILE
 
-        # 3. Aktifkan KernelSU secara paksa di .config
+        # 3. Injeksi Config KernelSU
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
-        echo "CONFIG_HAVE_KPROBES=y" >> out/.config
-        echo "CONFIG_KPROBES_ON_FTRACE=y" >> out/.config
-
-        # 4. FIX: Set semua opsi baru (CPU MASK dll) ke default agar tidak 'Aborted'
+        
+        # Jawab otomatis opsi baru (CPU MASK dll)
         make $args olddefconfig
 
-        # 5. Mulai Compiling
+        # 4. Mulai Build
         make -j$(nproc) $args
 
-    - name: Pack Output
+    - name: Pack Result
       run: |
         mkdir -p final_out
-        # Cari Image.gz
         if [ -f kernel_source/out/arch/arm64/boot/Image.gz ]; then
           cp kernel_source/out/arch/arm64/boot/Image.gz final_out/
-          # Ambil semua DTB yang dihasilkan
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
-          # Gabungkan Image.gz dan DTB (Format kernel Samsung)
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Success!"
+          echo "Build Sukses!"
         else
-          echo "Error: Image.gz not found! Check the build logs above."
+          echo "Kernel Image tidak ditemukan!"
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: LineageOS-Kernel-KSU-starlte
+        name: Lineage-Kernel-KSU-starlte
         path: final_out/Image.gz-dtb
         
