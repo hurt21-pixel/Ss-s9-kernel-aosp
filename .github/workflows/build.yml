@@ -1,4 +1,4 @@
-name: Build Kernel IES (Fixed ARM32 + Hybrid)
+name: Build Kernel IES (Fix VDSO Assembler)
 
 on:
   workflow_dispatch:
@@ -34,28 +34,29 @@ jobs:
         cd kernel_source
         mkdir -p out
 
-        # FIX UTAMA: Menambahkan CROSS_COMPILE_ARM32
-        # Hapus LLVM=1 agar LLVM_IAS=0 tidak diabaikan (fix positional arguments)
+        # FIX KRUSIAL: 
+        # 1. Tambahkan CROSS_COMPILE_ARM32 agar vdso32 tidak error
+        # 2. Tambahkan parameter AS agar Clang tidak salah panggil assembler
+        
         args="O=out \
               ARCH=arm64 \
               CC=clang-14 \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-gnu- \
               CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              AS=aarch64-linux-gnu-as \
               LLVM_IAS=0"
 
-        # Cari config starlte di repo krazey
+        # Cari config
         CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
-        echo "Menggunakan Config: $CONFIG_FILE"
         make $args $CONFIG_FILE
 
-        # Injeksi KernelSU & Matikan LTO (LTO sering bikin error GNU Gold di kernel 4.9)
+        # Injeksi KSU & Matikan LTO
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_LTO_CLANG=n" >> out/.config
         echo "CONFIG_LTO=n" >> out/.config
         
-        # Jawab otomatis opsi baru (CPU MASK dll)
         make $args olddefconfig
 
         # Mulai Build
@@ -69,15 +70,14 @@ jobs:
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Sukses!"
         else
-          echo "Kernel tidak ditemukan! Cek log build."
+          echo "Kernel image not found!"
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: IES-Kernel-Final-starlte
+        name: IES-Kernel-starlte-Fixed
         path: final_out/Image.gz-dtb
         
