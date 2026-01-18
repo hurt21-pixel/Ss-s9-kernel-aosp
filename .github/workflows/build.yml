@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    name: Build Kernel LineageOS
+    name: Build Kernel starlte
     runs-on: ubuntu-latest
 
     steps:
@@ -13,8 +13,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: LineageOS/android_kernel_samsung_exynos9810
-        # Menggunakan branch default (biasanya lineage-19.1 atau yang aktif)
         path: kernel_source
+        fetch-depth: 1
 
     - name: Install Dependencies
       run: |
@@ -23,80 +23,69 @@ jobs:
           bc bison flex libssl-dev make gcc python3 git zip lz4 cpio \
           lld clang llvm binutils-aarch64-linux-gnu
 
-    - name: Install KernelSU (Standard/Old Method)
+    - name: Setup KernelSU (Official Method)
       run: |
         cd kernel_source
-        # Menggunakan script installer resmi (selalu bekerja untuk Kernel 4.9 non-GKI)
+        # Menjalankan script installer resmi KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-        echo "KernelSU berhasil dipasang!"
+        echo "KernelSU integrated successfully."
 
     - name: Build Kernel
       run: |
         cd kernel_source
         mkdir -p out
 
-        # Setup Environment Variables (Clang dari Repo Ubuntu sudah cukup stabil untuk LineageOS)
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
-        export CC=clang
-        export LD=ld.lld
-        export CLANG_TRIPLE=aarch64-linux-gnu-
+        # 1. Tentukan Toolchain & Matikan Integrated Assembler (Fix Error gettimeofday.S)
+        # Kita pakai LLVM_IAS=0 agar file .S diproses oleh GNU Assembler (binutils)
+        args="O=out \
+              ARCH=arm64 \
+              CC=clang \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              STRIP=llvm-strip \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              LLVM=1 \
+              LLVM_IAS=0"
 
-        # 1. Load Defconfig
-        # LineageOS biasanya pakai nama 'lineageos_starlte_defconfig' atau 'exynos9810_defconfig'
-        # Kita coba cari file config yang ada unsur 'starlte' nya
-        CONFIG_NAME=$(find arch/arm64/configs -name "*starlte*defconfig" | head -n 1 | xargs basename)
-        
-        if [ -z "$CONFIG_NAME" ]; then
-            # Fallback jika tidak ketemu, pakai exynos9810_defconfig
-            CONFIG_NAME="exynos9810_defconfig"
-        fi
-        
-        echo "Menggunakan config: $CONFIG_NAME"
-        make O=out $CONFIG_NAME
+        # 2. Ambil Config (Gunakan starlte_defconfig)
+        make $args starlte_defconfig
 
-        # 2. Aktifkan KernelSU di Config
-        # Kita manipulasi file .config langsung untuk memastikan KSU aktif
-        echo "Mengaktifkan KernelSU..."
+        # 3. Aktifkan KernelSU secara paksa di .config
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KPROBES_ON_FTRACE=y" >> out/.config
 
-        # 3. Olddefconfig (Penyelamat)
-        # Biar fitur KSU dan fitur lain ter-set otomatis tanpa nanya-nanya
-        make O=out olddefconfig
+        # 4. FIX: Set semua opsi baru (CPU MASK dll) ke default agar tidak 'Aborted'
+        make $args olddefconfig
 
-        # 4. Compile
-        make -j$(nproc) O=out \
-             CC=clang \
-             CLANG_TRIPLE=aarch64-linux-gnu- \
-             CROSS_COMPILE=aarch64-linux-gnu- \
-             LD=ld.lld
+        # 5. Mulai Compiling
+        make -j$(nproc) $args
 
-    - name: Pack Image
+    - name: Pack Output
       run: |
-        cd kernel_source
-        mkdir -p ../final_out
-        
-        if [ -f out/arch/arm64/boot/Image.gz ]; then
-          cp out/arch/arm64/boot/Image.gz ../final_out/
-          # Copy DTB juga
-          find out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} ../final_out/ \;
-          
-          # Gabung Image.gz + DTB (Format Samsung)
-          cd ../final_out
+        mkdir -p final_out
+        # Cari Image.gz
+        if [ -f kernel_source/out/arch/arm64/boot/Image.gz ]; then
+          cp kernel_source/out/arch/arm64/boot/Image.gz final_out/
+          # Ambil semua DTB yang dihasilkan
+          find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
+          cd final_out
+          # Gabungkan Image.gz dan DTB (Format kernel Samsung)
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "Build Selesai!"
+          echo "Build Success!"
         else
-          echo "Gawat! Image.gz tidak terbentuk. Cek log error di atas."
+          echo "Error: Image.gz not found! Check the build logs above."
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: kernel-lineage-ksu
+        name: LineageOS-Kernel-KSU-starlte
         path: final_out/Image.gz-dtb
         
