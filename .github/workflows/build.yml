@@ -1,4 +1,4 @@
-name: LineageOS Kernel Build (Hybrid Clang + GNU)
+name: Build Kernel IES (Exynos 9810)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
     - name: Checkout Source
       uses: actions/checkout@v4
       with:
-        repository: LineageOS/android_kernel_samsung_exynos9810
+        repository: krazey/android_kernel_samsung_exynos9810
         path: kernel_source
         fetch-depth: 1
 
@@ -33,37 +33,37 @@ jobs:
         cd kernel_source
         mkdir -p out
 
-        # 1. SETUP HYBRID (RAHASIA SUKSES)
-        # Kita HAPUS 'LLVM=1' dan 'LLVM_IAS=0'.
-        # Kita pakai Clang cuma buat CC (Compiler C).
-        # Sisanya (LD, AR, AS) otomatis pakai GNU (aarch64-linux-gnu-...)
-        # Ini 100% ampuh buat kernel 4.9.
-        
+        # Pakai mode Hybrid agar aman dari error 'too many positional arguments'
+        # yang sering muncul di file assembly gettimeofday.S
         args="O=out \
               ARCH=arm64 \
               CC=clang-14 \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-gnu-"
 
-        # 2. Cari Config
+        # Mencari defconfig yang tepat di repo krazey
+        # Biasanya reponya pakai nama 'exynos9810-starlte_defconfig'
         CONFIG_FILE=$(find arch/arm64/configs/ -name "*starlte*defconfig" | head -n 1 | xargs basename)
+        
+        if [ -z "$CONFIG_FILE" ]; then
+          echo "ERROR: Defconfig starlte tidak ditemukan!"
+          ls arch/arm64/configs/
+          exit 1
+        fi
+        
         echo "Menggunakan Config: $CONFIG_FILE"
         make $args $CONFIG_FILE
 
-        # 3. Injeksi KernelSU (Tanpa LTO biar aman)
+        # Injeksi KernelSU
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KPROBES_ON_FTRACE=y" >> out/.config
         
-        # Matikan LTO (Penyebab error GNU Gold)
-        echo "CONFIG_LTO_CLANG=n" >> out/.config
-        echo "CONFIG_LTO=n" >> out/.config
-
-        # 4. Olddefconfig (Biar gak Aborted)
+        # Jawab otomatis opsi baru agar tidak 'Aborted'
         make $args olddefconfig
 
-        # 5. Compile
+        # Mulai Kompilasi
         make -j$(nproc) $args
 
     - name: Pack Result
@@ -73,16 +73,17 @@ jobs:
           cp kernel_source/out/arch/arm64/boot/Image.gz final_out/
           find kernel_source/out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} final_out/ \;
           cd final_out
+          # Gabungkan Image.gz dengan DTB agar bisa diflash
           cat Image.gz *.dtb > Image.gz-dtb
-          echo "BUILD SUKSES AKHIRNYA!"
+          echo "Build IES Berhasil!"
         else
-          echo "Masih gagal? Cek log di atas."
+          echo "Gagal, Image.gz tidak ditemukan!"
           exit 1
         fi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Lineage-Kernel-Hybrid-KSU
+        name: IES-Kernel-KSU-starlte
         path: final_out/Image.gz-dtb
         
